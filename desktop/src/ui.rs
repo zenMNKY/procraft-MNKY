@@ -1456,6 +1456,7 @@ impl Interface {
             QuickAction::Brushes => self.toggle(session, Popover::Brushes),
             QuickAction::Interface => self.toggle_bars(session),
             QuickAction::FitCanvas => session.settle_to_fit(),
+            QuickAction::ResetRotation => _ = session.settle_upright(),
             QuickAction::ActualSize => session.settle_to_actual_size(),
             QuickAction::Quickshape => {
                 if let Some(info) = session.quickshape_last() {
@@ -2450,6 +2451,13 @@ impl Interface {
             KeyShortcut::ColourBalance => self.run_quick(ctx, session, QuickAction::ColorBalance, middle),
             KeyShortcut::PerspectiveGuide => self.run_quick(ctx, session, QuickAction::GuidePerspective, middle),
             KeyShortcut::QuickMenu => self.quick_menu.toggle(middle),
+            KeyShortcut::Smudge => self.choose_tool(session, ToolKind::Smudge),
+            KeyShortcut::Adjustments => self.run_quick(ctx, session, QuickAction::Adjustments, middle),
+            KeyShortcut::Brushes => self.toggle(session, Popover::Brushes),
+            // the brush studio opens from the library here
+            KeyShortcut::BrushSettings => {}
+            KeyShortcut::ResetRotation => _ = session.settle_upright(),
+            KeyShortcut::ToggleEraser => self.choose_tool(session, ToolKind::Erase),
             KeyShortcut::GreyView => session.set_grey_view(!session.grey_view()),
             KeyShortcut::BrushSize { by } => session.set_brush_size((info.size + by).clamp(0.0, 1.0)),
             KeyShortcut::Nudge { dx, dy } => self.transform.moved(session.transform_arrow(dx, dy)),
