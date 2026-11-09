@@ -154,7 +154,8 @@ object Pc {
     val SideGlyph: Color get() = pick(0xFF969696, 0xFF646464)
     val SideGlyphDisabled: Color get() = pick(0x1AFFFFFF, 0x33000000)
     val SideBarWidth = 51.dp
-    val SideBarHeight = 519.dp
+    // 42 more than measured: the Erase button sits over Undo and Redo
+    val SideBarHeight = 561.dp
     val SideBarCorner = 20.dp
     /** Where the side bar's centre sits, as a fraction of the screen height. */
     const val SIDE_BAR_CENTRE = 0.5234f

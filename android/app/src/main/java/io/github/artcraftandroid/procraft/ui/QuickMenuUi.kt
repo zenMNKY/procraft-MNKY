@@ -232,7 +232,8 @@ private val DeleteFill = Color(0xFFFE4346)
 /**
  * The QuickMenu's menus, hung from the middle (below it where it fits, else above, else beside): a
  * plus adds one and shows it, a row tapped makes it the active one, a row swiped left shows Delete
- * (swiped most of the way, it goes at once). Menus added while it shows are listed first.
+ * (swiped most of the way, it goes at once), a row double tapped is renamed in place. Menus added
+ * while it shows are listed first.
  */
 @Composable
 private fun MenusPopover(
@@ -298,6 +299,8 @@ private fun MenusPopover(
         val order = fresh.filter { it in menus.indices } + menus.indices.filter { it !in fresh }
         // the row swiped and how far (px)
         var swipe by remember { mutableStateOf<Pair<Int, Float>?>(null) }
+        // the menu being renamed in its row (a double tap)
+        var renaming by remember { mutableStateOf<Int?>(null) }
         val density = LocalDensity.current
         val openPx = with(density) { SwipeOpen.toPx() }
         androidx.compose.foundation.lazy.LazyColumn(
@@ -336,8 +339,11 @@ private fun MenusPopover(
                             }
                         }
                         .pointerInput(i) {
-                            // a tap closes a row left open, else chooses the menu
-                            detectTapGestures { if (swipe != null) swipe = null else onChoose(i) }
+                            // a tap closes a row left open, else chooses the menu; a double tap renames it
+                            detectTapGestures(
+                                onDoubleTap = { if (swipe == null) renaming = i },
+                                onTap = { if (swipe != null) swipe = null else onChoose(i) },
+                            )
                         },
                 ) {
                     val rowPx = with(density) { maxWidth.toPx() }
@@ -366,10 +372,24 @@ private fun MenusPopover(
                             .clip(CircleShape).background(if (on) Pc.Accent else PickerRowFill).padding(horizontal = 16.dp),
                         contentAlignment = Alignment.CenterStart,
                     ) {
-                        Text(
-                            name, color = if (on) Color.White else PickerRowInk, fontSize = RowText, letterSpacing = RowTracking,
-                            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, modifier = Modifier.offset(y = RowTextDrop),
-                        )
+                        if (renaming == i) {
+                            InlineName(
+                                name = name,
+                                color = if (on) Color.White else PickerRowInk,
+                                fontSize = RowText,
+                                modifier = Modifier.fillMaxWidth().offset(y = RowTextDrop),
+                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                                onDone = {
+                                    vm.renameQuickMenu(i, it)
+                                    renaming = null
+                                },
+                            )
+                        } else {
+                            Text(
+                                name, color = if (on) Color.White else PickerRowInk, fontSize = RowText, letterSpacing = RowTracking,
+                                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, modifier = Modifier.offset(y = RowTextDrop),
+                            )
+                        }
                     }
                 }
             }

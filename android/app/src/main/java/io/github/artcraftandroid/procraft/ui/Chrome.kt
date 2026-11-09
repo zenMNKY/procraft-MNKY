@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.artcraftandroid.procraft.canvas.CanvasViewModel
 import io.github.artcraftandroid.procraft.canvas.Panel
+import io.github.artcraftandroid.procraft.core.GesturePurpose
 import io.github.artcraftandroid.procraft.core.ToolKind
 
 private val SliderLeft = 5.dp
@@ -203,13 +204,48 @@ fun SideBar(vm: CanvasViewModel, modifier: Modifier = Modifier, right: Boolean =
         // the modify button: the next touch on the canvas picks a colour
         Box(
             Modifier.offset(x(5.dp, 40.dp), 191.dp - shorter).size(40.dp, 41.dp).pointerInput(Unit) {
-                // held, it changes what a canvas touch does; tapped, it does what Tap □ is set to
+                // held, it changes what a canvas touch does; tapped, it does what Tap □ is set to;
+                // with Drag □ for brush size on (General), dragged up or down it changes the size
                 awaitEachGesture {
-                    awaitFirstDown().consume()
+                    val down = awaitFirstDown()
+                    down.consume()
                     vm.modifyPressed()
-                    val up = waitForUpOrCancellation()
-                    up?.consume()
-                    vm.modifyReleased(cancelled = up == null)
+                    if (!vm.gestures.isOn(GesturePurpose.GENERAL, "SQUARE_SIZE")) {
+                        val up = waitForUpOrCancellation()
+                        up?.consume()
+                        vm.modifyReleased(cancelled = up == null)
+                        return@awaitEachGesture
+                    }
+                    val sizePanel = panel(vm, CanvasViewModel.SliderPanel.SIZE)
+                    // a drag this far (px) takes the size from one end of its slider to the other
+                    val range = 260.dp.toPx()
+                    var dragged = false
+                    var cancelled = false
+                    var last = down.position.y
+                    while (true) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                        if (change == null) {
+                            cancelled = true
+                            break
+                        }
+                        if (!change.pressed) {
+                            change.consume()
+                            break
+                        }
+                        if (!dragged && kotlin.math.abs(change.position.y - down.position.y) > viewConfiguration.touchSlop) {
+                            dragged = true
+                            last = change.position.y
+                            sizePanel.show(false)
+                        }
+                        if (dragged) {
+                            vm.changeSize((vm.size - (change.position.y - last) / range).coerceIn(0f, 1f))
+                            last = change.position.y
+                            change.consume()
+                        }
+                    }
+                    if (dragged) sizePanel.hide()
+                    // a drag is not a tap
+                    vm.modifyReleased(cancelled = cancelled || dragged)
                 }
             },
             contentAlignment = Alignment.Center,
@@ -233,8 +269,18 @@ fun SideBar(vm: CanvasViewModel, modifier: Modifier = Modifier, right: Boolean =
             val top = if (which == CanvasViewModel.SliderPanel.SIZE) SizeTrackTop else opacityTop
             SliderPanel(vm, which, Modifier.offset(x(SliderLeft + Pc.SliderWidth + SliderPanelGap, SliderPanelSide), top - SliderPanelRise))
         }
-        SideButton(PcIcons.Undo, "Undo", vm.canUndo, Modifier.offset(x(5.dp, 40.dp), 430.5.dp - shorter * 2)) { vm.undo() }
-        SideButton(PcIcons.Redo, "Redo", vm.canRedo, Modifier.offset(x(5.dp, 40.dp), 472.5.dp - shorter * 2)) { vm.redo() }
+        EraserButton(vm, Modifier.offset(x(5.dp, 40.dp), 430.5.dp - shorter * 2))
+        SideButton(PcIcons.Undo, "Undo", vm.canUndo, Modifier.offset(x(5.dp, 40.dp), 472.5.dp - shorter * 2)) { vm.undo() }
+        SideButton(PcIcons.Redo, "Redo", vm.canRedo, Modifier.offset(x(5.dp, 40.dp), 514.5.dp - shorter * 2)) { vm.redo() }
+    }
+}
+
+/** Erase for now, over Undo: the brush erases until this is used again (blue meanwhile), then the tool it took the place of comes back. */
+@Composable
+private fun EraserButton(vm: CanvasViewModel, modifier: Modifier) {
+    val on = vm.erasingForNow
+    Box(modifier.size(40.dp, 41.dp).tap { vm.toggleEraser() }, contentAlignment = Alignment.Center) {
+        Icon(PcIcons.Erase, contentDescription = "Erase for now", tint = if (on) Pc.Accent else Pc.SideGlyph, modifier = Modifier.requiredSize(32.dp))
     }
 }
 

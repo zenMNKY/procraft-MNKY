@@ -1263,14 +1263,27 @@ private fun SliderKeypad(
         val top = (middle - height / 2).coerceIn(2.dp, (screen - height - 2.dp).coerceAtLeast(2.dp))
         top to (middle - top)
     }
-    // the arrow's tip a little into the pill, the body 3 past its end
-    val offset = with(density) { androidx.compose.ui.unit.IntOffset((pill.width - (Pc.ArrowHeight - 3.dp).toPx()).roundToInt(), (top.toPx() - pill.top).roundToInt()) }
+    // the arrow's tip a little into the pill, the body 3 past its end; where the screen has no room
+    // to the pill's right (a phone held upright) it goes to its left, else kept inside the screen
+    val screenWidth = with(density) { androidx.compose.ui.platform.LocalView.current.rootView.width.toDp() }
+    val bodyWidth = KeypadWidth + Pc.ArrowHeight
+    val tuck = Pc.ArrowHeight - 3.dp
+    val (across, arrowSide) = with(density) {
+        val left = pill.left.toDp()
+        val right = pill.right.toDp()
+        when {
+            right - tuck + bodyWidth <= screenWidth - 2.dp -> (right - left - tuck) to ArrowSide.LEFT
+            left + tuck - bodyWidth >= 2.dp -> (tuck - bodyWidth) to ArrowSide.RIGHT
+            else -> ((screenWidth - 2.dp - bodyWidth).coerceAtLeast(2.dp) - left) to ArrowSide.NONE
+        }
+    }
+    val offset = with(density) { androidx.compose.ui.unit.IntOffset(across.roundToPx(), (top.toPx() - pill.top).roundToInt()) }
     PcPopup(
         offset = offset,
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.PopupProperties(focusable = true, clippingEnabled = false),
     ) {
-        Popover(KeypadWidth, arrowAt, Modifier.height(height), fill = KeypadFill, corner = 22.dp, side = ArrowSide.LEFT) {
+        Popover(KeypadWidth, arrowAt, Modifier.height(height), fill = KeypadFill, corner = 22.dp, side = arrowSide) {
             Text(title, color = KeypadInk, fontSize = 22.sp, fontWeight = FontWeight.Bold, maxLines = 1, modifier = Modifier.padding(start = 25.dp, top = 19.dp).height(if (pages.size > 1) 43.dp else 51.dp))
             if (pages.size > 1) {
                 KeypadTabRow(pages, page) { page = it }
