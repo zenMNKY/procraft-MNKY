@@ -25,6 +25,8 @@ pub enum QuickAction {
     Eyedropper,
     FillLayer,
     FitCanvas,
+    /// The canvas turned upright again.
+    ResetRotation,
     FlipHorizontal,
     FlipVertical,
     Interface,
@@ -80,7 +82,7 @@ pub enum QuickAction {
 
 /// Each action: the name it is kept under (so a button keeps its action when the label changes),
 /// its label, and whether it is one of the adjustments.
-const ACTIONS: [(QuickAction, &str, &str, bool); 71] = [
+const ACTIONS: [(QuickAction, &str, &str, bool); 72] = [
     (QuickAction::None, "NONE", "No Action", false),
     (QuickAction::Guide2d, "GUIDE_2D", "2D Guide visibility", false),
     (QuickAction::ActualSize, "ACTUAL_SIZE", "Actual size", false),
@@ -101,6 +103,7 @@ const ACTIONS: [(QuickAction, &str, &str, bool); 71] = [
     (QuickAction::Eyedropper, "EYEDROPPER", "Eyedropper", false),
     (QuickAction::FillLayer, "FILL_LAYER", "Fill layer", false),
     (QuickAction::FitCanvas, "FIT_CANVAS", "Fit canvas", false),
+    (QuickAction::ResetRotation, "RESET_ROTATION", "Reset rotation", false),
     (QuickAction::FlipHorizontal, "FLIP_HORIZONTAL", "Flip horizontally", false),
     (QuickAction::FlipVertical, "FLIP_VERTICAL", "Flip vertically", false),
     (QuickAction::Interface, "INTERFACE", "Full screen", false),

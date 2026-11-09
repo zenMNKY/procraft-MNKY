@@ -152,7 +152,9 @@ pub struct TouchSettings {
     /// Two- and three-finger taps undo and redo (off, they still do while a transform, the
     /// selection tool or liquify is open).
     pub undo_taps: bool,
-    /// Two fingers turn the canvas as they zoom it.
+    /// Two fingers zoom the canvas as they spread or pinch.
+    pub zoom: bool,
+    /// Two fingers turn the canvas as they turn.
     pub rotate: bool,
     /// One finger paints a model, and turns it with the modify button held (else it turns it).
     pub model_finger_paint: bool,
@@ -186,6 +188,7 @@ impl Default for TouchSettings {
             finger_paint: true,
             one_finger_pan: false,
             undo_taps: true,
+            zoom: true,
             rotate: true,
             model_finger_paint: false,
             draw_and_hold: true,
@@ -2224,7 +2227,7 @@ impl CanvasSession {
         let (Some(a), Some(b)) = (at(a), at(b)) else { return false };
         let (x, y, d, angle) = pair(a, b);
         let (lx, ly, ld, la) = t.last;
-        let scale = if ld > 1.0 && d > 1.0 { d / ld } else { 1.0 };
+        let scale = if t.settings.zoom && ld > 1.0 && d > 1.0 { d / ld } else { 1.0 };
         let mut turn = angle - la;
         if turn > std::f32::consts::PI {
             turn -= std::f32::consts::TAU;

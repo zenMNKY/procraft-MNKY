@@ -50,6 +50,18 @@ pub enum KeyShortcut {
     PerspectiveGuide,
     /// The QuickMenu opened, or closed.
     QuickMenu,
+    /// The smudge tool.
+    Smudge,
+    /// The Adjustments menu opened, or closed.
+    Adjustments,
+    /// The brush library opened, or closed.
+    Brushes,
+    /// The studio opened on the current brush: its settings.
+    BrushSettings,
+    /// The canvas turned upright again (its zoom and place kept).
+    ResetRotation,
+    /// The eraser, for now: the tool before it comes back on the next press.
+    ToggleEraser,
     /// The canvas shown in perceptual greys, or in colour again (the window's view only).
     GreyView,
     /// The brush's size changed by `by` (of the slider's whole run).
@@ -75,7 +87,9 @@ pub enum KeyShortcut {
 /// (Backspace) clears the layer, [ and ] the brush's size by 1%, G shows the canvas in perceptual
 /// greys (as Krita's soft proofing does). Alone: B paints, E erases, M the eyedropper, S
 /// selection, V transform, C the colours, X swaps them, L Layers, Space the QuickMenu, [ and ] the
-/// brush's size by 5% (with Shift 10%); U, D, J, K and 0 as with the command key.
+/// brush's size by 5% (with Shift 10%); U, D, J, K and 0 as with the command key. Also alone: T
+/// smudges, A opens Adjustments, O the brush library, P the current brush's settings, Q turns the
+/// canvas upright and W erases until it is pressed again.
 #[uniffi::export]
 pub fn key_shortcut(key: String, command: bool, shift: bool, alt: bool, transforming: bool) -> Option<KeyShortcut> {
     use KeyShortcut::*;
@@ -119,6 +133,12 @@ pub fn key_shortcut(key: String, command: bool, shift: bool, alt: bool, transfor
         "l" => Some(Layers),
         "0" => Some(Interface),
         "space" => Some(QuickMenu),
+        "t" => Some(Smudge),
+        "a" => Some(Adjustments),
+        "o" => Some(Brushes),
+        "p" => Some(BrushSettings),
+        "q" => Some(ResetRotation),
+        "w" => Some(ToggleEraser),
         "[" => Some(BrushSize { by: -step }),
         "]" => Some(BrushSize { by: step }),
         "left" => nudge(-1.0, 0.0),
@@ -320,6 +340,9 @@ const SHORTCUTS: &[(&str, &[Entry])] = &[
             entry(&[command("b")], "Color Balance"),
             entry(&[command(";")], "Perspective guide on or off"),
             entry(&[alone("x")], "Swap the colours"),
+            entry(&[alone("t")], "Smudge"),
+            entry(&[alone("w")], "Erase until pressed again"),
+            entry(&[alone("p")], "The current brush's settings"),
             entry(&[alone("left"), alone("right"), alone("up"), alone("down")], "Transforming: move it a pixel"),
         ],
     ),
@@ -329,6 +352,8 @@ const SHORTCUTS: &[(&str, &[Entry])] = &[
             entry(&[alone("c")], "Colours"),
             entry(&[alone("k"), command("k")], "Actions"),
             entry(&[alone("l")], "Layers"),
+            entry(&[alone("a")], "Adjustments"),
+            entry(&[alone("o")], "Brush library"),
             entry(&[alone("space")], "QuickMenu"),
             entry(&[alone("0")], "Hide or show the interface"),
         ],
@@ -345,6 +370,7 @@ const SHORTCUTS: &[(&str, &[Entry])] = &[
         "View",
         &[
             entry(&[command("g")], "Grey view, to check values"),
+            entry(&[alone("q")], "Turn the canvas upright again"),
             desktop(&[command("="), command("-")], "Zoom in or out"),
             desktop(&[command("0")], "Fit the canvas"),
             drag("{command}Space and drag", "Zoom"),
@@ -449,7 +475,20 @@ mod tests {
         assert_eq!(key("v", false, false, false), Some(Transform));
         assert_eq!(key("S", false, true, false), Some(Selection));
         assert_eq!(key("0", false, false, false), Some(Interface));
-        assert_eq!(key("q", false, false, false), None);
+        assert_eq!(key("y", false, false, false), None);
+    }
+
+    #[test]
+    fn t_a_o_p_q_and_w_alone_reach_the_rest_of_the_top_bar() {
+        assert_eq!(key("t", false, false, false), Some(Smudge));
+        assert_eq!(key("a", false, false, false), Some(Adjustments));
+        assert_eq!(key("o", false, false, false), Some(Brushes));
+        assert_eq!(key("p", false, false, false), Some(BrushSettings));
+        assert_eq!(key("q", false, false, false), Some(ResetRotation));
+        assert_eq!(key("w", false, false, false), Some(ToggleEraser));
+        // with the command key A still copies the canvas, and the others do nothing
+        assert_eq!(key("a", true, false, false), Some(CopyCanvas));
+        assert_eq!(key("p", true, false, false), None);
     }
 
     #[test]
