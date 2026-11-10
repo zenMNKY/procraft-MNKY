@@ -1149,7 +1149,7 @@ impl CanvasSession {
         for (tool, s, i, size, opacity) in sliders {
             let Some(&tool) = TOOLS.get(usize::from(tool)) else { continue };
             if st.holds((s, i)) && size.is_finite() && opacity.is_finite() {
-                let v = crate::Sliders { size: size.clamp(0.0, 1.0), opacity: opacity.clamp(0.0, 1.0) };
+                let v = crate::Sliders { size: size.clamp(0.0, 1.0), opacity: opacity.clamp(0.0, 1.0), flow: 1.0 };
                 st.sliders.insert((tool, s, i), v);
             }
         }

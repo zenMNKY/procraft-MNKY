@@ -292,6 +292,8 @@ pub struct CanvasInfo {
     /// The current tool's sliders, 0..1.
     pub size: f32,
     pub opacity: f32,
+    /// The current tool's flow slider, 0..1 (1: the brush's own flow).
+    pub flow: f32,
     /// The current tool's brush across at that size, canvas pixels.
     pub brush_diameter: f32,
     pub can_undo: bool,
@@ -319,10 +321,12 @@ pub enum MobileError {
 struct Sliders {
     size: f32,
     opacity: f32,
+    /// How much of the brush's own flow is used, 0..1 (1 leaves the brush as it is).
+    flow: f32,
 }
 
 /// A brush's sliders before they are first moved.
-const DEFAULT_SLIDERS: Sliders = Sliders { size: 0.3, opacity: 1.0 };
+const DEFAULT_SLIDERS: Sliders = Sliders { size: 0.3, opacity: 1.0, flow: 1.0 };
 
 /// How long the view takes to settle into place, and how much it gives on the way.
 const VIEW_SETTLE_SECONDS: f32 = 0.5;
@@ -710,6 +714,8 @@ impl State {
         let sliders = self.sliders(tool);
         let mut brush = self.brush(tool).clone();
         brush.touch_opacity = sliders.opacity.clamp(0.0, 1.0);
+        // the flow slider takes a share of the brush's own flow
+        brush.flow *= sliders.flow.clamp(0.0, 1.0);
         // a blending brush's opacity lightens each stamp, as its flow does, so its strokes still
         // build up to full; a glaze's caps the stroke
         let opacity = if brush.blends() && matches!(tool.stroke_tool(), StrokeTool::Paint | StrokeTool::Erase) {
@@ -770,6 +776,7 @@ impl State {
             return None;
         }
         let sliders = self.sliders(tool);
+        second.flow *= sliders.flow.clamp(0.0, 1.0);
         let opacity = if second.blends() {
             second.flow *= sliders.opacity.clamp(0.0, 1.0).powf(procraft_engine::brush::FLOW_POWER);
             1.0
@@ -816,7 +823,7 @@ impl State {
         let brush = self.brush(tool);
         // where its file left them, else its preview size
         if let Some(&Some([size, opacity])) = brush.sliders.get(brushes::notch_tool(tool)) {
-            return Sliders { size, opacity };
+            return Sliders { size, opacity, flow: 1.0 };
         }
         let curve = procraft_engine::brush::SIZE_CURVE;
         let size = brush.setting("preview_size").clamp(0.0, 1.0).powf(1.0 / curve);
@@ -1902,6 +1909,13 @@ impl CanvasSession {
         }
     }
 
+    /// The current tool's flow slider, 0..1: the share of the brush's own flow it paints with.
+    pub fn set_brush_flow(&self, slider: f32) {
+        if slider.is_finite() {
+            self.shared.lock().sliders_mut().flow = slider.clamp(0.0, 1.0);
+        }
+    }
+
     /// The paint colour, sRGB 0..1.
     pub fn set_color(&self, r: f32, g: f32, b: f32) {
         let c = [r, g, b].map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 });
@@ -2037,6 +2051,7 @@ impl CanvasSession {
             tool: st.tool,
             size: sliders.size,
             opacity: sliders.opacity,
+            flow: sliders.flow,
             brush_diameter: st.brush(st.tool).diameter(sliders.size) * st.brush_scale(),
             // an open shape is kept, then undone
             can_undo: st.canvas.as_ref().is_some_and(Canvas::can_undo)

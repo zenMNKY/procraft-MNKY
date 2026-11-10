@@ -248,8 +248,7 @@ pub fn gesture_options(purpose: GesturePurpose) -> Vec<GestureOption> {
                 false,
                 false,
             ),
-            own("ZOOM", "Zoom with two fingers", "Two fingers spreading or pinching zoom the canvas", true, false),
-            own("ROTATE", "Rotate with two fingers", "Two fingers turning turn the canvas", true, false),
+            own("ROTATE", "Rotate with pinch zoom", "Two fingers turn the canvas as they zoom it", true, false),
             own(
                 "SQUARE_SIZE",
                 "Drag □ for brush size",
@@ -257,6 +256,25 @@ pub fn gesture_options(purpose: GesturePurpose) -> Vec<GestureOption> {
                 false,
                 false,
             ),
+            // the pen's two side buttons, each to pan or zoom the canvas while held (the app keeps
+            // one of the two on at most)
+            own("PEN_BUTTON_PAN", "Pen button pans", "Held, the pen's button moves the canvas as the pen drags", false, false),
+            own("PEN_BUTTON_ZOOM", "Pen button zooms", "Held, the pen's button zooms the canvas as the pen drags up or down", false, false),
+            own("PEN_SECOND_PAN", "Pen second button pans", "Held, the pen's second button moves the canvas as the pen drags", false, false),
+            own("PEN_SECOND_ZOOM", "Pen second button zooms", "Held, the pen's second button zooms the canvas as the pen drags up or down", false, false),
+            // which colour pickers the Colors panel offers (at least one stays on)
+            own("COLOR_DISC", "Colors: Disc", "Shows the Disc picker", true, false),
+            own("COLOR_CLASSIC", "Colors: Classic", "Shows the Classic picker", true, false),
+            own("COLOR_HARMONY", "Colors: Harmony", "Shows the Harmony picker", true, false),
+            own("COLOR_VALUE", "Colors: Value", "Shows the Value picker", true, false),
+            own("COLOR_PALETTES", "Colors: Palettes", "Shows the Palettes", true, false),
+            // what each side bar slider changes (each slider has one, and no two have the same)
+            own("SLIDER1_SIZE", "Slider 1: Size", "The upper side bar slider changes the brush's size", true, false),
+            own("SLIDER1_OPACITY", "Slider 1: Opacity", "The upper side bar slider changes the brush's opacity", false, false),
+            own("SLIDER1_FLOW", "Slider 1: Flow", "The upper side bar slider changes the brush's flow", false, false),
+            own("SLIDER2_SIZE", "Slider 2: Size", "The lower side bar slider changes the brush's size", false, false),
+            own("SLIDER2_OPACITY", "Slider 2: Opacity", "The lower side bar slider changes the brush's opacity", true, false),
+            own("SLIDER2_FLOW", "Slider 2: Flow", "The lower side bar slider changes the brush's flow", false, false),
             own(
                 "MODEL_FINGER",
                 "3D painting with a finger",
@@ -443,7 +461,6 @@ impl GestureSettings {
             finger_paint: general("FINGER_PAINT") && !pan,
             one_finger_pan: pan,
             undo_taps: !general("NO_UNDO"),
-            zoom: general("ZOOM"),
             rotate: general("ROTATE"),
             model_finger_paint: general("MODEL_FINGER"),
             draw_and_hold: self.is_on(GesturePurpose::Quickshape, "DRAW_HOLD".to_owned()),
