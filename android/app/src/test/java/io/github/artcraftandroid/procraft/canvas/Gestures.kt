@@ -26,6 +26,15 @@ val GesturePurpose.heading: String get() = gesturePurposeHeading(this)
 /** A way of touching's name on its switch. */
 val Trigger.label: String get() = gestureTriggerLabel(this)
 
+/** The three things a side bar slider can change. */
+private val SliderKinds = listOf("SIZE", "OPACITY", "FLOW")
+
+/** The Colors panel's pickers, as General's switches name them. */
+private val ColorPickers = listOf("COLOR_DISC", "COLOR_CLASSIC", "COLOR_HARMONY", "COLOR_VALUE", "COLOR_PALETTES")
+
+/** What a pen button does held, each button doing one of its two ways at most. */
+private val PenWays = listOf(setOf("PEN_BUTTON_PAN", "PEN_BUTTON_ZOOM"), setOf("PEN_SECOND_PAN", "PEN_SECOND_ZOOM"))
+
 /** Every page's switches, in order. */
 val GestureOptions: Map<GesturePurpose, List<GestureOption>> by lazy { gesturePurposes().associateWith { gestureOptions(it) } }
 
@@ -48,10 +57,53 @@ class GestureSettings(private val prefs: SharedPreferences) {
 
     /** Turns a switch on or off; on, its trigger goes off everywhere else. */
     fun set(p: GesturePurpose, key: String, value: Boolean) {
+        if (p == GesturePurpose.GENERAL && !allowed(key, value)) return
+        put(p, key, value)
+        if (p == GesturePurpose.GENERAL && value) tidyAfter(key)
+    }
+
+    private fun put(p: GesturePurpose, key: String, value: Boolean) {
         val edit = prefs.edit()
         for ((name, on) in core.set(p, key, value)) edit.putBoolean(name, on)
         edit.apply()
         changes++
+    }
+
+    private fun general(key: String) = isOn(GesturePurpose.GENERAL, key)
+
+    /** Which of the three a side bar slider ([slot] 1 or 2) changes. */
+    fun sliderKind(slot: Int): String =
+        SliderKinds.firstOrNull { general("SLIDER${slot}_$it") } ?: if (slot == 1) "SIZE" else "OPACITY"
+
+    /**
+     * Whether General's switch [key] may be set to [value]: a slider always changes one of the
+     * three, and the Colors panel always offers a picker, so the last one on stays on.
+     */
+    private fun allowed(key: String, value: Boolean): Boolean {
+        if (value) return true
+        if (key.startsWith("SLIDER1_") || key.startsWith("SLIDER2_")) return false
+        if (key in ColorPickers) return ColorPickers.count { it != key && general(it) } > 0
+        return true
+    }
+
+    /** [key] was switched on: what it rules out goes off (a slider and the pen's buttons keep one of their ways). */
+    private fun tidyAfter(key: String) {
+        val g = GesturePurpose.GENERAL
+        PenWays.firstOrNull { key in it }?.forEach { if (it != key) put(g, it, false) }
+        if (key.startsWith("SLIDER1_") || key.startsWith("SLIDER2_")) {
+            val slot = key[6].digitToInt()
+            val kind = key.substringAfter('_')
+            val other = 3 - slot
+            // what this slider had before it took [kind]: the other slider takes it if it had [kind]
+            val before = SliderKinds.firstOrNull { it != kind && general("SLIDER${slot}_$it") } ?: if (slot == 1) "SIZE" else "OPACITY"
+            val otherHad = sliderKind(other)
+            for (k in SliderKinds) if (k != kind) put(g, "SLIDER${slot}_$k", false)
+            if (otherHad == kind) {
+                put(g, "SLIDER${other}_$kind", false)
+                put(g, "SLIDER${other}_$before", true)
+                for (k in SliderKinds) if (k != before) put(g, "SLIDER${other}_$k", false)
+            }
+        }
     }
 
     /** What [t] does, if anything. */

@@ -198,6 +198,10 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     var opacity by mutableFloatStateOf(1f)
         private set
 
+    /** The flow slider: the share of the brush's own flow it paints with (1: as the brush is). */
+    var flow by mutableFloatStateOf(1f)
+        private set
+
     /** The paint colour as hue (0..1), saturation and brightness. */
     var hue by mutableFloatStateOf(DEFAULT_HUE)
         private set
@@ -279,11 +283,15 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     /** The colour panel's mode, kept from one session to the next. */
     private var colorModeState by mutableStateOf(ColorMode.entries.getOrElse(interfacePrefs.getInt(COLOR_MODE, ColorMode.DISC.ordinal)) { ColorMode.DISC })
     var colorMode: ColorMode
-        get() = colorModeState
+        // a mode General hides isn't shown: the first one that is, instead
+        get() = colorModeState.let { if (colorModeShown(it)) it else ColorMode.entries.firstOrNull(::colorModeShown) ?: it }
         set(mode) {
             colorModeState = mode
             interfacePrefs.edit().putInt(COLOR_MODE, mode.ordinal).apply()
         }
+
+    /** Whether the Colors panel offers [mode] (General). */
+    fun colorModeShown(mode: ColorMode): Boolean = gestures.isOn(GesturePurpose.GENERAL, "COLOR_${mode.name}")
 
     /** The side bar on the right edge instead of the left. */
     var rightHanded by mutableStateOf(interfacePrefs.getBoolean(RIGHT_HANDED, false))
@@ -5172,8 +5180,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         opacityNotches = s.sliderNotches(false)
     }
 
-    /** Which slider's panel shows beside it: the size's or the opacity's. */
-    enum class SliderPanel { SIZE, OPACITY }
+    /** Which slider's panel shows beside it (and what a slider changes): size, opacity or flow. */
+    enum class SliderPanel { SIZE, OPACITY, FLOW }
 
     /** The panel beside a slider: shown while it is dragged, and kept up after it is held still. */
     var sliderPanel by mutableStateOf<SliderPanel?>(null)
@@ -5203,6 +5211,14 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         opacity = value
         session?.setBrushOpacity(value)
     }
+
+    fun changeFlow(value: Float) {
+        flow = value
+        session?.setBrushFlow(value)
+    }
+
+    /** What side bar slider [slot] (1 above, 2 below) changes, as General sets it. */
+    fun sliderKind(slot: Int): SliderPanel = SliderPanel.valueOf(gestures.sliderKind(slot))
 
     fun setColor(h: Float, s: Float, v: Float) {
         hue = h.coerceIn(0f, 1f)
@@ -7467,6 +7483,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         val info = session?.info() ?: return
         size = info.size
         opacity = info.opacity
+        flow = info.flow
         readNotches()
     }
 
