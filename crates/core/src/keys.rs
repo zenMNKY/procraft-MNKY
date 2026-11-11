@@ -50,6 +50,8 @@ pub enum KeyShortcut {
     PerspectiveGuide,
     /// The QuickMenu opened, or closed.
     QuickMenu,
+    /// The artwork closed, back to the gallery.
+    Gallery,
     /// The smudge tool.
     Smudge,
     /// The Adjustments menu opened, or closed.
@@ -133,6 +135,7 @@ pub fn key_shortcut(key: String, command: bool, shift: bool, alt: bool, transfor
         "l" => Some(Layers),
         "0" => Some(Interface),
         "space" => Some(QuickMenu),
+        "g" => Some(Gallery),
         "t" => Some(Smudge),
         "a" => Some(Adjustments),
         "o" => Some(Brushes),
@@ -340,6 +343,7 @@ const SHORTCUTS: &[(&str, &[Entry])] = &[
             entry(&[command("b")], "Color Balance"),
             entry(&[command(";")], "Perspective guide on or off"),
             entry(&[alone("x")], "Swap the colours"),
+            entry(&[alone("g")], "Gallery"),
             entry(&[alone("t")], "Smudge"),
             entry(&[alone("w")], "Erase until pressed again"),
             entry(&[alone("p")], "The current brush's settings"),
@@ -486,6 +490,8 @@ mod tests {
         assert_eq!(key("p", false, false, false), Some(BrushSettings));
         assert_eq!(key("q", false, false, false), Some(ResetRotation));
         assert_eq!(key("w", false, false, false), Some(ToggleEraser));
+        assert_eq!(key("g", false, false, false), Some(Gallery));
+        assert_eq!(key("g", true, false, false), Some(GreyView));
         // with the command key A still copies the canvas, and the others do nothing
         assert_eq!(key("a", true, false, false), Some(CopyCanvas));
         assert_eq!(key("p", true, false, false), None);

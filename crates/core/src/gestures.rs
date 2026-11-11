@@ -268,6 +268,10 @@ pub fn gesture_options(purpose: GesturePurpose) -> Vec<GestureOption> {
             own("COLOR_HARMONY", "Colors: Harmony", "Shows the Harmony picker", true, false),
             own("COLOR_VALUE", "Colors: Value", "Shows the Value picker", true, false),
             own("COLOR_PALETTES", "Colors: Palettes", "Shows the Palettes", true, false),
+            // the sliders under the colour pickers (and in Value): red, green, blue, or the Lab colour's
+            // lightness and its two colour axes (one of the two is on)
+            own("COLOR_SLIDERS_RGB", "Color sliders: RGB", "Red, green and blue sliders under the pickers and in Value", false, false),
+            own("COLOR_SLIDERS_LAB", "Color sliders: LAB", "Lightness, a and b sliders under the pickers and in Value", true, false),
             // what each side bar slider changes (each slider has one, and no two have the same)
             own("SLIDER1_SIZE", "Slider 1: Size", "The upper side bar slider changes the brush's size", true, false),
             own("SLIDER1_OPACITY", "Slider 1: Opacity", "The upper side bar slider changes the brush's opacity", false, false),

@@ -519,6 +519,7 @@ impl CanvasSession {
         let sliders = st.sliders_mut();
         sliders.size = size;
         sliders.opacity = 1.0;
+        sliders.flow = 1.0;
         st.color = [r, g, b].map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 1.0 });
     }
 

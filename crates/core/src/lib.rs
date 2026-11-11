@@ -714,16 +714,17 @@ impl State {
         let sliders = self.sliders(tool);
         let mut brush = self.brush(tool).clone();
         brush.touch_opacity = sliders.opacity.clamp(0.0, 1.0);
-        // the flow slider takes a share of the brush's own flow
-        brush.flow *= sliders.flow.clamp(0.0, 1.0);
-        // a blending brush's opacity lightens each stamp, as its flow does, so its strokes still
-        // build up to full; a glaze's caps the stroke
-        let opacity = if brush.blends() && matches!(tool.stroke_tool(), StrokeTool::Paint | StrokeTool::Erase) {
-            brush.flow *= sliders.opacity.clamp(0.0, 1.0).powf(procraft_engine::brush::FLOW_POWER);
-            1.0
+        // the flow slider takes a share of the brush's own flow: a blending brush's through the
+        // curve its opacity slider used to lighten its stamps with (so its strokes still build up
+        // to full), a glaze's as it is
+        let flow = sliders.flow.clamp(0.0, 1.0);
+        brush.flow *= if brush.blends() && matches!(tool.stroke_tool(), StrokeTool::Paint | StrokeTool::Erase) {
+            flow.powf(procraft_engine::brush::FLOW_POWER)
         } else {
-            brush.opacity(sliders.opacity)
+            flow
         };
+        // the opacity slider goes between the brush's least and most opacity, blending or glaze
+        let opacity = brush.opacity(sliders.opacity);
         let diameter = brush.diameter(sliders.size);
         let mut style = StrokeStyle::for_brush(
             &brush,
@@ -776,13 +777,9 @@ impl State {
             return None;
         }
         let sliders = self.sliders(tool);
-        second.flow *= sliders.flow.clamp(0.0, 1.0);
-        let opacity = if second.blends() {
-            second.flow *= sliders.opacity.clamp(0.0, 1.0).powf(procraft_engine::brush::FLOW_POWER);
-            1.0
-        } else {
-            second.opacity(sliders.opacity)
-        };
+        let flow = sliders.flow.clamp(0.0, 1.0);
+        second.flow *= if second.blends() { flow.powf(procraft_engine::brush::FLOW_POWER) } else { flow };
+        let opacity = second.opacity(sliders.opacity);
         let diameter = second.diameter(sliders.size);
         let alpha_lock = self.doc.layer(layer).is_some_and(|l| l.alpha_lock);
         let mut style =
