@@ -198,6 +198,10 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     var opacity by mutableFloatStateOf(1f)
         private set
 
+    /** The flow slider: the share of the brush's own flow it paints with (1: as the brush is). */
+    var flow by mutableFloatStateOf(1f)
+        private set
+
     /** The paint colour as hue (0..1), saturation and brightness. */
     var hue by mutableFloatStateOf(DEFAULT_HUE)
         private set
@@ -279,11 +283,18 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     /** The colour panel's mode, kept from one session to the next. */
     private var colorModeState by mutableStateOf(ColorMode.entries.getOrElse(interfacePrefs.getInt(COLOR_MODE, ColorMode.DISC.ordinal)) { ColorMode.DISC })
     var colorMode: ColorMode
-        get() = colorModeState
+        // a mode General hides isn't shown: the first one that is, instead
+        get() = colorModeState.let { if (colorModeShown(it)) it else ColorMode.entries.firstOrNull(::colorModeShown) ?: it }
         set(mode) {
             colorModeState = mode
             interfacePrefs.edit().putInt(COLOR_MODE, mode.ordinal).apply()
         }
+
+    /** The Colors panel's number sliders under the pickers, and in Value, are the Lab colour's (else red, green and blue) (General). */
+    val labSliders: Boolean get() = gestures.isOn(GesturePurpose.GENERAL, "COLOR_SLIDERS_LAB")
+
+    /** Whether the Colors panel offers [mode] (General). */
+    fun colorModeShown(mode: ColorMode): Boolean = gestures.isOn(GesturePurpose.GENERAL, "COLOR_${mode.name}")
 
     /** The side bar on the right edge instead of the left. */
     var rightHanded by mutableStateOf(interfacePrefs.getBoolean(RIGHT_HANDED, false))
@@ -2305,6 +2316,9 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     /** What each touch gesture does. */
     val gestures = GestureSettings(app.getSharedPreferences("gestures", android.content.Context.MODE_PRIVATE))
 
+    /** The keyboard shortcuts as the user set them (kept in their own file, apart from the other settings). */
+    val hotkeys = Hotkeys(app.getSharedPreferences("hotkeys", android.content.Context.MODE_PRIVATE))
+
     /**
      * The pen's side button did what the shared touches set it to: the tool, the eyedropper and
      * drawing assist read again as they now are.
@@ -2577,6 +2591,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun select(tool: ToolKind) {
+        // choosing another tool by hand ends the eraser's turn
+        if (tool != ToolKind.ERASE) toolBeforeEraser = null
         feedback()
         endRecolor()
         session?.setTool(tool)
@@ -2829,6 +2845,15 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         keepQuickMenus()
     }
 
+    /** Names menu [i] [name] (a blank name leaves it as it was). */
+    fun renameQuickMenu(i: Int, name: String) {
+        val menu = quickMenus.getOrNull(i) ?: return
+        val clean = name.trim()
+        if (clean.isEmpty() || clean == menu.name) return
+        quickMenus = quickMenus.toMutableList().also { it[i] = menu.copy(name = clean) }
+        keepQuickMenus()
+    }
+
     /** Deletes menu [i] (never the last one left); the ring shows the one before it if it showed it. */
     fun deleteQuickMenu(i: Int) {
         if (quickMenus.size < 2 || i !in quickMenus.indices) return
@@ -2851,23 +2876,18 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun keyShortcut(keyCode: Int, ctrl: Boolean, shift: Boolean, alt: Boolean): Boolean {
         if (screen != Screen.CANVAS || session == null) return false
+        // keys typed while the gesture controls (and their hotkey editor) are open are not shortcuts
+        if (gestureControlsOpen) return false
         // the key as the shared shortcuts name it (crates/core keys.rs), which say what it does
-        val name = when (keyCode) {
-            in android.view.KeyEvent.KEYCODE_A..android.view.KeyEvent.KEYCODE_Z -> ('a' + (keyCode - android.view.KeyEvent.KEYCODE_A)).toString()
-            in android.view.KeyEvent.KEYCODE_0..android.view.KeyEvent.KEYCODE_9 -> ('0' + (keyCode - android.view.KeyEvent.KEYCODE_0)).toString()
-            android.view.KeyEvent.KEYCODE_LEFT_BRACKET -> "["
-            android.view.KeyEvent.KEYCODE_RIGHT_BRACKET -> "]"
-            android.view.KeyEvent.KEYCODE_SEMICOLON -> ";"
-            android.view.KeyEvent.KEYCODE_SPACE -> "space"
-            android.view.KeyEvent.KEYCODE_DEL -> "backspace"
-            android.view.KeyEvent.KEYCODE_FORWARD_DEL -> "delete"
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT -> "left"
-            android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> "right"
-            android.view.KeyEvent.KEYCODE_DPAD_UP -> "up"
-            android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "down"
-            else -> return false
+        val name = Hotkeys.nameOf(keyCode) ?: return false
+        // a press the user set for another action does what that action's own press does
+        val press = Combo(name, ctrl, shift, alt)
+        val used = when (val way = hotkeys.translate(press)) {
+            Hotkeys.Way.Same -> press
+            Hotkeys.Way.Blocked -> return false
+            is Hotkeys.Way.Use -> way.combo
         }
-        when (val shortcut = sharedKeyShortcut(name, ctrl, shift, alt, transforming) ?: return false) {
+        when (val shortcut = sharedKeyShortcut(used.key, used.ctrl, used.shift, used.alt, transforming) ?: return false) {
             KeyShortcut.Undo -> undo()
             KeyShortcut.Redo -> redo()
             KeyShortcut.CopyLayer -> copyLayer()
@@ -2891,6 +2911,13 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             KeyShortcut.ColourBalance -> runQuickAction(QuickAction.COLOR_BALANCE, screenCentre)
             KeyShortcut.PerspectiveGuide -> runQuickAction(QuickAction.GUIDE_PERSPECTIVE, screenCentre)
             KeyShortcut.QuickMenu -> toggleQuickMenu(screenCentre)
+            KeyShortcut.Gallery -> closeArtwork()
+            KeyShortcut.Smudge -> select(ToolKind.SMUDGE)
+            KeyShortcut.Adjustments -> adjustmentsPressed()
+            KeyShortcut.Brushes -> toggle(Panel.BRUSHES)
+            KeyShortcut.BrushSettings -> if (!studioOpen) openStudio()
+            KeyShortcut.ResetRotation -> resetRotation()
+            KeyShortcut.ToggleEraser -> toggleEraser()
             KeyShortcut.GreyView -> session?.let { it.setGreyView(!it.greyView()) }
             is KeyShortcut.BrushSize -> changeSize((size + shortcut.by).coerceIn(0f, 1f))
             is KeyShortcut.Nudge -> session?.transformArrow(shortcut.dx, shortcut.dy)?.let { transformMoved(it) }
@@ -2949,6 +2976,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
             QuickAction.BRUSHES -> toggle(Panel.BRUSHES)
             QuickAction.INTERFACE -> toggleBars()
             QuickAction.FIT_CANVAS -> settleToFit()
+            QuickAction.RESET_ROTATION -> resetRotation()
             QuickAction.ACTUAL_SIZE -> {
                 session?.settleToActualSize()
                 followView()
@@ -3395,6 +3423,29 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
                 ToolKind.ERASE -> "Erasing"
             } + " with the current brush",
         )
+    }
+
+    /** The tool the eraser took the place of, while the eraser is on for now (the Erase button over Undo). */
+    var toolBeforeEraser by mutableStateOf<ToolKind?>(null)
+        private set
+
+    /** The eraser is on for now, in the place of another tool. */
+    val erasingForNow: Boolean get() = tool == ToolKind.ERASE && toolBeforeEraser != null
+
+    /**
+     * The eraser, for now, with the brush the current tool has (as a tool button held does): the
+     * tool it took the place of comes back when this is used again.
+     */
+    fun toggleEraser() {
+        val back = toolBeforeEraser
+        if (tool == ToolKind.ERASE) {
+            // back to the tool it came from (the paint tool when the eraser was chosen by hand)
+            select(back ?: ToolKind.PAINT)
+            return
+        }
+        val from = tool
+        toolHeld(ToolKind.ERASE)
+        if (tool == ToolKind.ERASE) toolBeforeEraser = from
     }
 
     fun showSet(index: Int) {
@@ -5131,8 +5182,8 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         opacityNotches = s.sliderNotches(false)
     }
 
-    /** Which slider's panel shows beside it: the size's or the opacity's. */
-    enum class SliderPanel { SIZE, OPACITY }
+    /** Which slider's panel shows beside it (and what a slider changes): size, opacity or flow. */
+    enum class SliderPanel { SIZE, OPACITY, FLOW }
 
     /** The panel beside a slider: shown while it is dragged, and kept up after it is held still. */
     var sliderPanel by mutableStateOf<SliderPanel?>(null)
@@ -5162,6 +5213,14 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         opacity = value
         session?.setBrushOpacity(value)
     }
+
+    fun changeFlow(value: Float) {
+        flow = value
+        session?.setBrushFlow(value)
+    }
+
+    /** What side bar slider [slot] (1 above, 2 below) changes, as General sets it. */
+    fun sliderKind(slot: Int): SliderPanel = SliderPanel.valueOf(gestures.sliderKind(slot))
 
     fun setColor(h: Float, s: Float, v: Float) {
         hue = h.coerceIn(0f, 1f)
@@ -6883,6 +6942,11 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         followView()
     }
 
+    /** The canvas turned upright again, its zoom and what is in the middle kept. */
+    fun resetRotation() {
+        if (session?.settleUpright() == true) followView()
+    }
+
     /** What is drawn over the canvas follows the view each frame while it moves into place. */
     private fun followView() {
         val s = session ?: return
@@ -7421,6 +7485,7 @@ class CanvasViewModel(app: Application) : AndroidViewModel(app) {
         val info = session?.info() ?: return
         size = info.size
         opacity = info.opacity
+        flow = info.flow
         readNotches()
     }
 

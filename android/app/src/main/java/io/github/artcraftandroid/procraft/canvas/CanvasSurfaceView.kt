@@ -13,6 +13,7 @@ import io.github.artcraftandroid.procraft.core.CanvasSession
 import io.github.artcraftandroid.procraft.core.MobileException
 import io.github.artcraftandroid.procraft.core.PenSample
 import io.github.artcraftandroid.procraft.core.CompanionMode
+import io.github.artcraftandroid.procraft.core.GesturePurpose
 import io.github.artcraftandroid.procraft.core.PointerKind
 import io.github.artcraftandroid.procraft.core.TouchCommand
 import io.github.artcraftandroid.procraft.core.TouchMove
@@ -263,6 +264,8 @@ class CanvasSurfaceView(context: Context, private val vm: CanvasViewModel) : Sur
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val s = session ?: return true
         if (penButton(e)) return true
+        // the pen with a button held that General sets to pan or zoom moves the canvas, not the brush
+        if (penNavigates(e, s)) return true
         predictor.record(e)
         if (e.actionMasked == MotionEvent.ACTION_DOWN) {
             // Continue filling on a layer that takes no fill: the dialog says why, and the touch does nothing
@@ -322,7 +325,8 @@ class CanvasSurfaceView(context: Context, private val vm: CanvasViewModel) : Sur
         // by what the event says is held: some pens' drivers send no press of their own, only their
         // hover and touch events with the button in them
         val held = e.buttonState and PEN_BUTTONS
-        val pressed = held and penButtons.inv()
+        // (a button General sets to pan or zoom does only that)
+        val pressed = held and penButtons.inv() and navMask().inv()
         penButtons = held
         val own = e.actionMasked == MotionEvent.ACTION_BUTTON_PRESS || e.actionMasked == MotionEvent.ACTION_BUTTON_RELEASE
         if (pressed == 0) return own && (e.actionButton and PEN_BUTTONS) != 0
@@ -331,6 +335,75 @@ class CanvasSurfaceView(context: Context, private val vm: CanvasViewModel) : Sur
         val s = session ?: return own
         penPressed(s, pressed and MotionEvent.BUTTON_STYLUS_PRIMARY == 0, e.x, e.y)
         return own
+    }
+
+    /** What the pen is doing to the canvas, as it went down with a side button held: pan or zoom (else it paints). */
+    private var penNav = NAV_NONE
+
+    /** Where the pen last was, and where it went down (the zoom's fixed point), while it moves the canvas. */
+    private var navLast = Offset.Zero
+    private var navPivot = Offset.Zero
+
+    /** What side [button] does held (General): pan, zoom or neither. */
+    private fun navOf(button: Int): Int {
+        val second = button == MotionEvent.BUTTON_STYLUS_SECONDARY
+        val g = vm.gestures
+        return when {
+            g.isOn(GesturePurpose.GENERAL, if (second) "PEN_SECOND_PAN" else "PEN_BUTTON_PAN") -> NAV_PAN
+            g.isOn(GesturePurpose.GENERAL, if (second) "PEN_SECOND_ZOOM" else "PEN_BUTTON_ZOOM") -> NAV_ZOOM
+            else -> NAV_NONE
+        }
+    }
+
+    /** The side buttons General sets to pan or zoom. */
+    private fun navMask(): Int =
+        (if (navOf(MotionEvent.BUTTON_STYLUS_PRIMARY) != NAV_NONE) MotionEvent.BUTTON_STYLUS_PRIMARY else 0) or
+            (if (navOf(MotionEvent.BUTTON_STYLUS_SECONDARY) != NAV_NONE) MotionEvent.BUTTON_STYLUS_SECONDARY else 0)
+
+    /**
+     * The pen put down with a side button held that General sets to pan or zoom moves the canvas
+     * until it is lifted: panning as it drags, zooming as it drags up (in) or down (out) about
+     * where it went down. Whether [e] was taken that way.
+     */
+    private fun penNavigates(e: MotionEvent, s: CanvasSession): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                penNav = NAV_NONE
+                if (e.getToolType(0) != MotionEvent.TOOL_TYPE_STYLUS) return false
+                val held = e.buttonState
+                val way = when {
+                    held and MotionEvent.BUTTON_STYLUS_PRIMARY != 0 -> navOf(MotionEvent.BUTTON_STYLUS_PRIMARY)
+                    held and MotionEvent.BUTTON_STYLUS_SECONDARY != 0 -> navOf(MotionEvent.BUTTON_STYLUS_SECONDARY)
+                    else -> NAV_NONE
+                }
+                if (way == NAV_NONE) return false
+                penNav = way
+                navLast = Offset(e.x, e.y)
+                navPivot = navLast
+                requestUnbufferedDispatch(e)
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (penNav == NAV_NONE) return false
+                val to = Offset(e.x, e.y)
+                val dx = to.x - navLast.x
+                val dy = to.y - navLast.y
+                navLast = to
+                if (penNav == NAV_PAN) {
+                    s.viewGesture(to.x, to.y, dx, dy, 1f, 0f)
+                } else {
+                    s.viewGesture(navPivot.x, navPivot.y, 0f, 0f, kotlin.math.exp(-dy * ZOOM_PER_PX), 0f)
+                }
+                vm.refreshView()
+                return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (penNav == NAV_NONE) return false
+                penNav = NAV_NONE
+                return true
+            }
+            else -> return penNav != NAV_NONE
+        }
     }
 
     /** A side button went down with the pen at ([x], [y]). */
@@ -429,5 +502,13 @@ class CanvasSurfaceView(context: Context, private val vm: CanvasViewModel) : Sur
         const val PREDICTION_LASTS_MS = 40L
 
         const val PEN_BUTTONS = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
+
+        /** What a pen with a button held does to the canvas. */
+        const val NAV_NONE = 0
+        const val NAV_PAN = 1
+        const val NAV_ZOOM = 2
+
+        /** The zoom of a pen dragged a pixel up (in) or down (out): e to this power. */
+        const val ZOOM_PER_PX = 0.006f
     }
 }
