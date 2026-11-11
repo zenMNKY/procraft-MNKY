@@ -200,7 +200,9 @@ fun SideBar(vm: CanvasViewModel, modifier: Modifier = Modifier, right: Boolean =
                 drawPath(body, Pc.SideBar)
             },
     ) {
-        BrushSlider(vm.size, vm::changeSize, Modifier.offset(x(SliderLeft, Pc.SliderWidth), SizeTrackTop).then(rememberFrost(Pc.SliderCorner, track)), panel(vm, CanvasViewModel.SliderPanel.SIZE), vm.sizeNotches, trackHeight)
+        // what each slider changes is General's choice: size, opacity or flow
+        val upper = vm.sliderKind(1)
+        SideSlider(vm, upper, Modifier.offset(x(SliderLeft, Pc.SliderWidth), SizeTrackTop).then(rememberFrost(Pc.SliderCorner, track)), trackHeight)
         // the modify button: the next touch on the canvas picks a colour
         Box(
             Modifier.offset(x(5.dp, 40.dp), 191.dp - shorter).size(40.dp, 41.dp).pointerInput(Unit) {
@@ -263,15 +265,25 @@ fun SideBar(vm: CanvasViewModel, modifier: Modifier = Modifier, right: Boolean =
                 },
             )
         }
-        BrushSlider(vm.opacity, vm::changeOpacity, Modifier.offset(x(SliderLeft, Pc.SliderWidth), opacityTop).then(rememberFrost(Pc.SliderCorner, track)), panel(vm, CanvasViewModel.SliderPanel.OPACITY), vm.opacityNotches, trackHeight)
+        SideSlider(vm, vm.sliderKind(2), Modifier.offset(x(SliderLeft, Pc.SliderWidth), opacityTop).then(rememberFrost(Pc.SliderCorner, track)), trackHeight)
         // beside the slider it belongs to, a little above it, outside the bar
         vm.sliderPanel?.let { which ->
-            val top = if (which == CanvasViewModel.SliderPanel.SIZE) SizeTrackTop else opacityTop
+            val top = if (which == upper) SizeTrackTop else opacityTop
             SliderPanel(vm, which, Modifier.offset(x(SliderLeft + Pc.SliderWidth + SliderPanelGap, SliderPanelSide), top - SliderPanelRise))
         }
         EraserButton(vm, Modifier.offset(x(5.dp, 40.dp), 430.5.dp - shorter * 2))
         SideButton(PcIcons.Undo, "Undo", vm.canUndo, Modifier.offset(x(5.dp, 40.dp), 472.5.dp - shorter * 2)) { vm.undo() }
         SideButton(PcIcons.Redo, "Redo", vm.canRedo, Modifier.offset(x(5.dp, 40.dp), 514.5.dp - shorter * 2)) { vm.redo() }
+    }
+}
+
+/** A side bar slider changing [kind]: its value, its notches (size and opacity have them) and its panel. */
+@Composable
+private fun SideSlider(vm: CanvasViewModel, kind: CanvasViewModel.SliderPanel, modifier: Modifier, height: Dp) {
+    when (kind) {
+        CanvasViewModel.SliderPanel.SIZE -> BrushSlider(vm.size, vm::changeSize, modifier, panel(vm, kind), vm.sizeNotches, height)
+        CanvasViewModel.SliderPanel.OPACITY -> BrushSlider(vm.opacity, vm::changeOpacity, modifier, panel(vm, kind), vm.opacityNotches, height)
+        CanvasViewModel.SliderPanel.FLOW -> BrushSlider(vm.flow, vm::changeFlow, modifier, panel(vm, kind), emptyList(), height)
     }
 }
 
@@ -324,7 +336,13 @@ private val SliderPanelDot get() = if (Pc.light) Color.Black else Color.White
 @Composable
 private fun SliderPanel(vm: CanvasViewModel, which: CanvasViewModel.SliderPanel, modifier: Modifier) {
     val size = which == CanvasViewModel.SliderPanel.SIZE
-    val value = if (size) vm.size else vm.opacity
+    val value = when (which) {
+        CanvasViewModel.SliderPanel.SIZE -> vm.size
+        CanvasViewModel.SliderPanel.OPACITY -> vm.opacity
+        CanvasViewModel.SliderPanel.FLOW -> vm.flow
+    }
+    // flow has no saved values
+    val hasNotches = which != CanvasViewModel.SliderPanel.FLOW
     val diameter = androidx.compose.runtime.remember(vm.size) { vm.brushScreenDiameter() }
     // the brush's stamp as it paints (soft where it is soft), as many pixels across as it shows
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -342,7 +360,13 @@ private fun SliderPanel(vm: CanvasViewModel, which: CanvasViewModel.SliderPanel,
         Text(
             androidx.compose.ui.text.buildAnnotatedString {
                 pushStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold))
-                append(if (size) "Size" else "Opacity")
+                append(
+                    when (which) {
+                        CanvasViewModel.SliderPanel.SIZE -> "Size"
+                        CanvasViewModel.SliderPanel.OPACITY -> "Opacity"
+                        CanvasViewModel.SliderPanel.FLOW -> "Flow"
+                    },
+                )
                 pop()
                 append(" ${(value * 100f).roundToInt()}%")
             },
@@ -352,9 +376,9 @@ private fun SliderPanel(vm: CanvasViewModel, which: CanvasViewModel.SliderPanel,
             modifier = Modifier.offset(16.dp, 6.dp).height(32.dp).wrapContentHeight(Alignment.CenterVertically),
         )
         // read again as the notches change, so a value saved or taken away shows at once
-        val notches = if (size) vm.sizeNotches else vm.opacityNotches
-        val onNotch = androidx.compose.runtime.remember(notches, value) { vm.notchAt(size, value) != null }
-        val canSave = androidx.compose.runtime.remember(notches, value) { vm.canSaveNotch(size) }
+        val notches: List<Float> = if (!hasNotches) emptyList() else if (size) vm.sizeNotches else vm.opacityNotches
+        val onNotch = androidx.compose.runtime.remember(notches, value) { hasNotches && vm.notchAt(size, value) != null }
+        val canSave = androidx.compose.runtime.remember(notches, value) { hasNotches && vm.canSaveNotch(size) }
         if (onNotch || canSave) {
             Box(Modifier.offset(150.dp, 6.dp).size(32.dp).tap { vm.toggleNotch(size) }, contentAlignment = Alignment.Center) {
                 Icon(

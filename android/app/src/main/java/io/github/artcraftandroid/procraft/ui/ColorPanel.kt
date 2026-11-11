@@ -245,20 +245,17 @@ fun ColorPanel(vm: CanvasViewModel, arrowX: Dp, screenHeight: Dp, modifier: Modi
             // on a screen too short for it all the picker scrolls, the tabs staying
             when (vm.colorMode) {
                 ColorMode.DISC -> Disc(c, short = short)
-                ColorMode.VALUE -> Value(c, short = short, inks = vm.inks)
+                ColorMode.VALUE -> Value(c, short = short, inks = vm.inks, lab = vm.labSliders)
                 ColorMode.HARMONY -> Harmony(vm, c, short = short)
                 else -> Classic(c, square = if (short) (screenHeight - ShortClassicRest).coerceIn(150.dp, 344.dp) else 344.dp)
             }
+            // under Disc, Classic and Harmony: the red, green and blue sliders or the Lab colour's (General)
+            if (vm.colorMode != ColorMode.VALUE) SpaceSliders(c, vm.labSliders, short)
             if (short) {
                 ShortBottom(vm, c)
             } else {
+                // the history last (the palette's swatches are not shown here)
                 History(vm, c)
-                vm.palettes.getOrNull(vm.defaultPalette)?.let { p ->
-                    Box(Modifier.fillMaxWidth().height(44.dp)) {
-                        Text(p.name, color = Pc.PanelTitle, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.padding(start = 21.dp, top = 13.dp))
-                    }
-                    SwatchGrid(vm, c, vm.defaultPalette, p, Modifier.padding(horizontal = 8.dp))
-                }
             }
         }
         ModeTabs(vm)
@@ -1025,11 +1022,8 @@ class Inks(val of: (Int) -> FloatArray, val rgb: (FloatArray) -> Int)
  * cyan, magenta, yellow and black, the groups closer together), then the hex code.
  */
 @Composable
-private fun Value(c: ColorPick, compact: Boolean = false, short: Boolean = false, inks: Inks? = null) {
+private fun Value(c: ColorPick, compact: Boolean = false, short: Boolean = false, inks: Inks? = null, lab: Boolean = false) {
     val rgb = c.rgb()
-    val r = (rgb shr 16) and 0xFF
-    val g = (rgb shr 8) and 0xFF
-    val b = rgb and 0xFF
     if (compact) {
         CompactValue(c)
         return
@@ -1051,9 +1045,7 @@ private fun Value(c: ColorPick, compact: Boolean = false, short: Boolean = false
             }
         }
         ValueGroup(Modifier.padding(top = 6.dp), short) {
-            ValueRow("R", r / 255f, listOf(Color(0, g, b), Color(255, g, b)), "$r") { c.setRgb(((it * 255f).roundToInt() shl 16) or (g shl 8) or b) }
-            ValueRow("G", g / 255f, listOf(Color(r, 0, b), Color(r, 255, b)), "$g") { c.setRgb((r shl 16) or ((it * 255f).roundToInt() shl 8) or b) }
-            ValueRow("B", b / 255f, listOf(Color(r, g, 0), Color(r, g, 255)), "$b") { c.setRgb((r shl 16) or (g shl 8) or (it * 255f).roundToInt()) }
+            if (lab) LabRows(c) else RgbRows(c)
         }
         HexRow(rgb) { c.setRgb(it) }
         if (short) Spacer(Modifier.height(2.dp))
@@ -1156,6 +1148,94 @@ private fun CompactValueRow(letter: String, value: Float, colours: List<Color>, 
 private fun ValueGroup(modifier: Modifier = Modifier, short: Boolean = false, rows: @Composable () -> Unit) {
     // short, the rows are 51 apart instead of 53
     if (short) ValueGroup(modifier, 151.dp, 7.dp, 3.dp, rows) else ValueGroup(modifier, 167.dp, 9.dp, 9.dp, rows)
+}
+
+/** The colour's red, green and blue as three number rows. */
+@Composable
+private fun RgbRows(c: ColorPick) {
+    val rgb = c.rgb()
+    val r = (rgb shr 16) and 0xFF
+    val g = (rgb shr 8) and 0xFF
+    val b = rgb and 0xFF
+    ValueRow("R", r / 255f, listOf(Color(0, g, b), Color(255, g, b)), "$r") { c.setRgb(((it * 255f).roundToInt() shl 16) or (g shl 8) or b) }
+    ValueRow("G", g / 255f, listOf(Color(r, 0, b), Color(r, 255, b)), "$g") { c.setRgb((r shl 16) or ((it * 255f).roundToInt() shl 8) or b) }
+    ValueRow("B", b / 255f, listOf(Color(r, g, 0), Color(r, g, 255)), "$b") { c.setRgb((r shl 16) or (g shl 8) or (it * 255f).roundToInt()) }
+}
+
+/**
+ * The colour's Lab values (lightness, and a and b: green to red, blue to yellow) as three number
+ * rows; a slider moved sets the nearest colour the canvas can show.
+ */
+@Composable
+private fun LabRows(c: ColorPick) {
+    val rgb = c.rgb()
+    val lab = remember(rgb) { Lab.fromRgb(rgb) }
+    val l = lab[0].toDouble()
+    val a = lab[1].toDouble()
+    val b = lab[2].toDouble()
+    fun along(make: (Double) -> Int): List<Color> = List(9) { rgbColor(make(it / 8.0)) }
+    ValueRow("L", (l / 100.0).toFloat().coerceIn(0f, 1f), along { Lab.toRgb(it * 100.0, a, b) }, "${l.roundToInt()}") {
+        c.setRgb(Lab.toRgb(it * 100.0, a, b))
+    }
+    ValueRow("a", ((a + 128.0) / 255.0).toFloat().coerceIn(0f, 1f), along { Lab.toRgb(l, -128.0 + it * 255.0, b) }, "${a.roundToInt()}") {
+        c.setRgb(Lab.toRgb(l, -128.0 + it * 255.0, b))
+    }
+    ValueRow("b", ((b + 128.0) / 255.0).toFloat().coerceIn(0f, 1f), along { Lab.toRgb(l, a, -128.0 + it * 255.0) }, "${b.roundToInt()}") {
+        c.setRgb(Lab.toRgb(l, a, -128.0 + it * 255.0))
+    }
+}
+
+/** Under a picker: three number sliders, the Lab colour's if [lab], else red, green and blue. */
+@Composable
+private fun SpaceSliders(c: ColorPick, lab: Boolean, short: Boolean) {
+    Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 6.dp)) {
+        ValueGroup(short = short) {
+            if (lab) LabRows(c) else RgbRows(c)
+        }
+    }
+}
+
+/** Colours in the Lab space (CIE 1976, a D65 white) from and to canvas colours (0xRRGGBB, read as sRGB). */
+private object Lab {
+    private const val XN = 0.95047
+    private const val YN = 1.0
+    private const val ZN = 1.08883
+    private const val EPSILON = 216.0 / 24389.0
+    private const val KAPPA = 24389.0 / 27.0
+
+    private fun linear(v: Double) = if (v <= 0.04045) v / 12.92 else Math.pow((v + 0.055) / 1.055, 2.4)
+    private fun encoded(v: Double) = if (v <= 0.0031308) 12.92 * v else 1.055 * Math.pow(v, 1.0 / 2.4) - 0.055
+    private fun f(t: Double) = if (t > EPSILON) Math.cbrt(t) else (KAPPA * t + 16.0) / 116.0
+    private fun inverse(t: Double) = if (t * t * t > EPSILON) t * t * t else (116.0 * t - 16.0) / KAPPA
+
+    /** Lightness (0..100), a and b (about -128..127) of [rgb]. */
+    fun fromRgb(rgb: Int): FloatArray {
+        val r = linear(((rgb shr 16) and 0xFF) / 255.0)
+        val g = linear(((rgb shr 8) and 0xFF) / 255.0)
+        val b = linear((rgb and 0xFF) / 255.0)
+        val x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / XN
+        val y = (0.2126729 * r + 0.7151522 * g + 0.0721750 * b) / YN
+        val z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / ZN
+        val fx = f(x)
+        val fy = f(y)
+        val fz = f(z)
+        return floatArrayOf((116.0 * fy - 16.0).toFloat(), (500.0 * (fx - fy)).toFloat(), (200.0 * (fy - fz)).toFloat())
+    }
+
+    /** The canvas colour nearest the Lab colour (what it can show: out of its range, the nearest in it). */
+    fun toRgb(l: Double, a: Double, b: Double): Int {
+        val fy = (l.coerceIn(0.0, 100.0) + 16.0) / 116.0
+        val fx = fy + a / 500.0
+        val fz = fy - b / 200.0
+        val x = XN * inverse(fx)
+        val y = YN * inverse(fy)
+        val z = ZN * inverse(fz)
+        val r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
+        val g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
+        val bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
+        fun byte(v: Double) = (encoded(v.coerceIn(0.0, 1.0)) * 255.0).roundToInt().coerceIn(0, 255)
+        return (byte(r) shl 16) or (byte(g) shl 8) or byte(bl)
+    }
 }
 
 /** A group of number sliders [height] tall, [gap] between rows, [top] above the first. */
@@ -1414,8 +1494,9 @@ private val Modes = listOf(
 @Composable
 private fun ModeTabs(vm: CanvasViewModel) {
     Row(Modifier.fillMaxWidth().height(70.dp)) {
+        // the pickers General hides aren't offered
         for ((mode, icon, label) in Modes) {
-            ModeTab(icon, label, selected = vm.colorMode == mode, Modifier.weight(1f)) { vm.colorMode = mode }
+            if (vm.colorModeShown(mode)) ModeTab(icon, label, selected = vm.colorMode == mode, Modifier.weight(1f)) { vm.colorMode = mode }
         }
     }
 }

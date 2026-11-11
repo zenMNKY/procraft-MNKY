@@ -53,6 +53,7 @@ import io.github.artcraftandroid.procraft.canvas.heading
 import io.github.artcraftandroid.procraft.canvas.title
 import io.github.artcraftandroid.procraft.core.GesturePurpose
 import io.github.artcraftandroid.procraft.canvas.GestureSettings
+import io.github.artcraftandroid.procraft.canvas.SettingsFile
 
 private val ScreenFill get() = if (Pc.light) Color(0xFFF3F3F3) else Color(0xFF1F1F1F)
 private val RailFill get() = if (Pc.light) Color(0xFFEBEBEB) else Color(0xFF272727)
@@ -124,28 +125,15 @@ fun GestureControls(vm: CanvasViewModel) {
     var resetting by remember { mutableStateOf(false) }
     val settings = vm.gestures
     val context = androidx.compose.ui.platform.LocalContext.current
-    // the settings written to a file the user names, and read back from one
-    val exporter = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
-    ) { uri ->
-        if (uri != null) {
-            val done = runCatching {
-                context.contentResolver.openOutputStream(uri)?.use { it.write(settings.exportJson().toByteArray(Charsets.UTF_8)) } != null
-            }.getOrDefault(false)
-            vm.showNotice(if (done) "Gesture settings exported" else "The settings couldn't be exported", warning = !done)
-        }
+    // all the settings but the hotkeys written to a file the user names, and read back from one; the
+    // hotkeys have a file of their own
+    val exportSettings = rememberFileExport(vm, "Settings exported", "The settings couldn't be exported") { SettingsFile.export(context, settings) }
+    val importSettings = rememberFileImport(vm, "Settings imported (start ProCraft again for all of them to show)", "That isn't a ProCraft settings file") {
+        SettingsFile.import(context, settings, it)
     }
-    val importer = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        if (uri != null) {
-            val text = runCatching {
-                context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-            }.getOrNull()
-            val done = text != null && settings.importJson(text)
-            vm.showNotice(if (done) "Gesture settings imported" else "That isn't a gesture settings file", warning = !done)
-        }
-    }
+    val exportHotkeys = rememberFileExport(vm, "Hotkeys exported", "The hotkeys couldn't be exported") { vm.hotkeys.exportJson() }
+    val importHotkeys = rememberFileImport(vm, "Hotkeys imported", "That isn't a ProCraft hotkeys file") { vm.hotkeys.importJson(it) }
+    var showHotkeys by remember { mutableStateOf(false) }
     BackHandler { vm.gestureControlsOpen = false }
     // on a wide screen what gestures can do is named on a card, the page and its title to its right
     val screen = androidx.compose.ui.platform.LocalConfiguration.current
@@ -202,19 +190,16 @@ fun GestureControls(vm: CanvasViewModel) {
                     Text("Reset to defaults", color = Ink, fontSize = 15.sp, maxLines = 1)
                 }
                 Spacer(Modifier.height(14.dp))
+                PillButton("Edit hotkeys", Modifier.fillMaxWidth()) { showHotkeys = true }
+                Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Box(
-                        Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(25.dp)).background(CardFill).clickable { exporter.launch("procraft-gestures.json") },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Export settings", color = Ink, fontSize = 15.sp, maxLines = 1)
-                    }
-                    Box(
-                        Modifier.weight(1f).height(50.dp).clip(RoundedCornerShape(25.dp)).background(CardFill).clickable { importer.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Import settings", color = Ink, fontSize = 15.sp, maxLines = 1)
-                    }
+                    PillButton("Export settings", Modifier.weight(1f)) { exportSettings("procraft-settings.json") }
+                    PillButton("Import settings", Modifier.weight(1f)) { importSettings() }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PillButton("Export hotkeys", Modifier.weight(1f)) { exportHotkeys("procraft-hotkeys.json") }
+                    PillButton("Import hotkeys", Modifier.weight(1f)) { importHotkeys() }
                 }
             }
             Spacer(Modifier.height(40.dp))
@@ -231,6 +216,52 @@ fun GestureControls(vm: CanvasViewModel) {
             resetting = false
         },
     )
+    if (showHotkeys) HotkeysScreen(vm) { showHotkeys = false }
+}
+
+/** A rounded button of General's page. */
+@Composable
+private fun PillButton(label: String, modifier: Modifier, onClick: () -> Unit) {
+    Box(modifier.height(50.dp).clip(RoundedCornerShape(25.dp)).background(CardFill).clickable { onClick() }, contentAlignment = Alignment.Center) {
+        Text(label, color = Ink, fontSize = 15.sp, maxLines = 1)
+    }
+}
+
+/** Starts the saving of a file the user names, holding what [make] writes; gives the function that asks for its name. */
+@Composable
+private fun rememberFileExport(vm: CanvasViewModel, done: String, failed: String, make: () -> String): (String) -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val makeText by rememberUpdatedState(make)
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { it.write(makeText().toByteArray(Charsets.UTF_8)) } != null
+            }.getOrDefault(false)
+            vm.showNotice(if (ok) done else failed, warning = !ok)
+        }
+    }
+    return { name -> launcher.launch(name) }
+}
+
+/** Gives the function that asks for a file and hands its text to [take] (true: it was what it should be). */
+@Composable
+private fun rememberFileImport(vm: CanvasViewModel, done: String, failed: String, take: (String) -> Boolean): () -> Unit {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val takeText by rememberUpdatedState(take)
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val text = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+            }.getOrNull()
+            val ok = text != null && takeText(text)
+            vm.showNotice(if (ok) done else failed, warning = !ok)
+        }
+    }
+    return { launcher.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) }
 }
 
 /** A way of touching: its name and what it does, and its switch. */
