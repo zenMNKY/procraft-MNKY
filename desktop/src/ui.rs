@@ -2451,6 +2451,8 @@ impl Interface {
             KeyShortcut::ColourBalance => self.run_quick(ctx, session, QuickAction::ColorBalance, middle),
             KeyShortcut::PerspectiveGuide => self.run_quick(ctx, session, QuickAction::GuidePerspective, middle),
             KeyShortcut::QuickMenu => self.quick_menu.toggle(middle),
+            // the desktop's gallery is its start screen, left from its own menu
+            KeyShortcut::Gallery => {}
             KeyShortcut::Smudge => self.choose_tool(session, ToolKind::Smudge),
             KeyShortcut::Adjustments => self.run_quick(ctx, session, QuickAction::Adjustments, middle),
             KeyShortcut::Brushes => self.toggle(session, Popover::Brushes),
